@@ -26,7 +26,7 @@ void loop(){
    sensorData["humidity"] = isnan(humidity) ? -255 : humidity;
    sensorData["temperature"] = isnan(temperature) ? -255: temperature;
    sensorData["moisture"] = analogRead(MOISTURE_PIN);
-   sensorData.printTo(Serial);
-   Serial.println();
    Serial.flush();
+   sensorData.printTo(Serial);
+   
 }

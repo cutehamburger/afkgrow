@@ -1,54 +1,57 @@
+import tornado.web
+import tornado.websocket
+import tornado.ioloop
+from tornado.ioloop import PeriodicCallback
+import os.path
+import signal
+import sys
 import serial
 import json
+import time
 
-HUMIDITY_HIGH = 55
-HUMIDITY_LOW = 45
-TEMP_HIGH = 80
-TEMP_LOW = 70
-MOIST_LOW = 10
-MOIST_HIGH = 60
+#Periodic Callback Frequency
+POLL_FREQ = 1000
 
-try:
-    ser = serial.Serial('/dev/ttyUSB0', 9600)
-except serial.SerialException as e:
-    print("Caught exeption opening serial connection: " + e)
+ser = serial.Serial('/dev/ttyUSB0', 9600, timeout = 2)
 
-#{"humidity":41.2,"celsius":23.7,"fahrenheit":74.66,"moisture":-2}
+class MainHandler(tornado.web.RequestHandler):
+    def get(self):
+        print("[HTTP]User Connected.")
+        self.render("index.html")
 
-while True:
-    try:
-        (sensorJson = ser.readline().decode("utf-8").strip())
+class WSHandler(tornado.websocket.WebSocketHandler):
+    def open(self):
+        self.callback = PeriodicCallback(self.sendData, POLL_FREQ)
+        print("[WS] Connection was opened with callback frequency " + str(POLL_FREQ) + " ms")
+        self.callback.start()
+
+    def on_message(self, message):
+        print("[WS] Incoming message:", message)
+
+    def on_close(self):
+        self.callback.stop()
+        print ("[WS] Closed Connection")
+
+    def sendData(self):
+        ser.write(b'1')
+        sensorJson = ser.readline().decode("utf-8").strip()
+        f = open("sensorOutput.json", 'w')
+        json.dump(sensorJson, f)
         print(sensorJson)
-    except serial.SerialException as e:
-        print("Caught exeption reading from serial: " + e)
-    
-    try:
+        f.close()
         parsedJson = json.loads(sensorJson)
-    except json.JSONDecodeError as e:
-        print("Error parsing  sensor json: " + e)
+        self.write_message(sensorJson)
 
-    humidity = parsedJson["humidity"]
-    celsius = parsedJson["celsius"]
-    fahrenheit = parsedJson["fahrenheit"]
-    moisture = parsedJson["moisture"]
-    
-    #try:
-    #    saveFile = open("./save","r+w")
-    #except IOError as e:
-    #    print("Error opening ./save: " + e)
+app = tornado.web.Application(
+   [
+      (r'/', MainHandler),
+      (r'/ws', WSHandler),
+      (r'/favicon.ico', tornado.web.StaticFileHandler,{"path": ""})
+   ],
+   template_path = os.path.join(os.path.dirname(__file__), "templates"),
+   static_path = os.path.join(os.path.dirname(__file__), "static")
+   )
 
-    
-
-    #if humidity > HUMIDITY_HIGH:
-        #speed up fans
-    #elif humidity < HUMIDITY_LOW:
-        #slow down fans
-
-    #if moisture < MOIST_LOW:
-        #pump water
-    #elif moisture > MOIST_HIGH:
-        #alert
-
-
-
-
+if __name__ == "__main__":
+    app.listen(80)
+    tornado.ioloop.IOLoop.instance().start()

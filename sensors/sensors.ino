@@ -16,17 +16,17 @@ void setup(){
 void loop(){
    while(!Serial.available());
    Serial.readString();
-
+   
    StaticJsonBuffer<200> jsonBuffer;
    JsonObject& sensorData= jsonBuffer.createObject(); 
-
+   
    float humidity = myDHT.readHumidity();
    float temperature = myDHT.readTemperature();
-
+   
    sensorData["humidity"] = isnan(humidity) ? -255 : humidity;
    sensorData["temperature"] = isnan(temperature) ? -255: temperature;
    sensorData["moisture"] = analogRead(MOISTURE_PIN);
-   Serial.flush();
+   
    sensorData.printTo(Serial);
    
 }

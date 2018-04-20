@@ -16,7 +16,7 @@ import RPi.GPIO as GPIO
 #21:00-13:00 (veg)
 #21:00-9:00 (flower)
 startTime = datetime.time(hour=21, minute=0, second=0)
-endTime = datetime.time(hour=13, minute=0, second=0)
+endTime = datetime.time(hour=23, minute=0, second=0)
 
 targetTemperature = 24
 targetHumidity = 50
@@ -50,14 +50,14 @@ print("[start] led: " + str(ledState) +
 
 ser = serial.Serial('/dev/ttyUSB0', 9600, timeout = 5)
 
-WORK_INTERVAL = 0.5
-SITE_POLL_SECONDS = 5
+WORK_INTERVAL = 1
+SITE_POLL_SECONDS = 3
 
 
 def getSensorJson():
     ser.write(b'1')
     sensorJson = ser.readline().decode('utf-8')
-    print("[SERIAL] " + sensorJson.strip())
+    #print("[SERIAL] " + sensorJson.strip())
     return sensorJson
 
 def translate(value, leftMin, leftMax, rightMin, rightMax):
@@ -66,25 +66,34 @@ def translate(value, leftMin, leftMax, rightMin, rightMax):
     valueScaled = float(value - leftMin) / float(leftSpan)
     return rightMin + (valueScaled * rightSpan)
 
+def ledOn():
+     ledState = True
+     print("[state] LED on")
+     GPIO.output(LED_RELAY, GPIO.HIGH)
+
+def ledOff():
+     ledState = False
+     print("[state] LED off")
+     GPIO.output(LED_RELAY, GPIO.LOW)
+
 def worker():
     global ledState, pumpState, fanState, fanspeed, lastWateredTime
     now = datetime.datetime.now().time().replace(microsecond=0) 
     jsonDict = json.loads(getSensorJson())
     jsonDict["moisture"] = translate(jsonDict["moisture"], SENSOR_DRY, SENSOR_WET, 0, 100)
     
-    #ledState = True
-    #GPIO.output(LED_RELAY, GPIO.HIGH)
-    
     #handle LED (active high, normally off)
-    if startTime <= now <= endTime and not ledState:
-        ledState = True
-        print("[state] LED togggled on")
-        GPIO.output(LED_RELAY, GPIO.HIGH)
-    if startTime > now > endTime and ledState:
-        ledState = False
-        print("[state] LED toggled off")
-        GPIO.output(LED_RELAY, GPIO.LOW)
-    
+    if startTime < endTime:
+        if startTime <= now <= endTime and not ledState:
+            ledOn()
+        elif (now >= endTime or now <= startTime) and ledState:
+            ledOff()
+    else: 
+        if (now >= startTime or now <= endTime) and not ledState:
+            ledOn()
+        elif startTime >= now >= endTime and ledState:
+            ledOff()
+
     #handle pump (active low, normally off)
     if  jsonDict["moisture"] <= targetMoisture and not pumpState:
         pumpState = True
@@ -109,7 +118,7 @@ def worker():
        
     #handle fan speed
 
-    print(str(startTime) + " " + str(now) + " " +str(endTime))
+    #print(str(startTime) + " " + str(now) + " " +str(endTime))
     
     jsonDict["ledState"] = ledState
     jsonDict["startTime"] = str(startTime)
@@ -134,15 +143,11 @@ class setInterval:
         thread = threading.Thread(target = self.__setInterval)
         thread.start()
 
-    def cleanup(self):
-        GPIO.cleanup()
-
     def __setInterval(self):
         nextTime = time.time() + self.interval
         while not self.stopEvent.wait(nextTime - time.time()):
             nextTime += self.interval
             self.action()
-        self.cleanup()
 
     def cancel(self):
         self.stopEvent.set()
@@ -151,7 +156,9 @@ class setInterval:
 def signal_handler(signal, frame):
    print("...Ctrl+C caught")
    GPIO.cleanup()
+   workerThread.stopEvent.set()
    sys.exit(0)
+
 signal.signal(signal.SIGINT, signal_handler)
 
 
@@ -196,10 +203,12 @@ app = tornado.web.Application(
     static_path = os.path.join(os.path.dirname(__file__), "static")
 )
 
+workerThread = None
+
 if __name__ == "__main__":
     try:
         app.listen(80)
-        inter = setInterval(WORK_INTERVAL, worker)
+        workerThread = setInterval(WORK_INTERVAL, worker)
         tornado.ioloop.IOLoop.instance().start()
     except:
         print("Tornado server stopped. ")

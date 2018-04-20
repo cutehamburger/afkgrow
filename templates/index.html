@@ -1,23 +1,44 @@
 <html>
 
 <head>
-<title></title>
+<title>application</title>
 </head>
-
 <body>
-<h2></h2>
-</p>
+<h3>Websocket status: <span id="ws-status"> Waiting... </span></h3>
 <hr>
-Websocket status: <span id="ws-status"> Waiting... </span>
 </br>
-Raw JSON: <span id="ws-json">Waiting... </span>
+Server: <span id="ws-timestamp"> Waiting... </span>
 </br>
 Temperature: <span id="ws-temperature">Waiting... </span>
 </br>
-Humidity: <span id="ws-humidity">Waiting... </span>
+Target Temperature: <span id="ws-targetTemperature">Waiting... </span>
 </br>
-Soil Moisture: <span id="ws-soil-moisture">Waiting... </span>
-
+%Humidity: <span id="ws-humidity">Waiting... </span>
+</br>
+Target %Humidity: <span id="ws-targetHumidity">Waiting... </span>
+</br>
+Soil Moisture: <span id="ws-soilMoisture">Waiting... </span>
+</br>
+Target Soil Moisture: <span id="ws-targetSoilMoisture">Waiting... </span>
+</br>
+LED Status: <span id="ws-ledState">Waiting... </span>
+</br>
+Begin: <span id="ws-ledStart">Waiting... </span>
+</br>
+End: <span id="ws-ledStop">Waiting... </span>
+</br>
+Pump Status: <span id="ws-pumpState">Waiting... </span>
+</br>
+Last Watered: <span id="ws-lastWatered">Waiting... </span>
+</br>
+Fan Status: <span id="ws-fanState">Waiting... </span>
+</br>
+Fan Speed: <span id="ws-fanSpeed">Waiting... </span>
+</br>
+</br>
+<hr>
+<span id="ws-json">Waiting... </span>
+</br>
 <!-- Scripts -->
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
 <script src="{{ static_url("ws-client.js") }}"></script>

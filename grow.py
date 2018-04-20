@@ -13,32 +13,40 @@ import time
 import datetime
 import RPi.GPIO as GPIO
 
-#9p-1pm (veg)
-#9p-9a (flower)
+#21:00-13:00 (veg)
+#21:00-9:00 (flower)
 startTime = datetime.time(hour=21, minute=0, second=0)
 endTime = datetime.time(hour=13, minute=0, second=0)
 
-LOWER_MOIST = 550
-UPPER_MOIST = 280
+targetTemperature = 24
+targetHumidity = 50
+targetMoisture = 60
+
+SENSOR_DRY = 550
+SENSOR_WET = 280
 
 #RPi Pins
-RELAY_1 = 26
-RELAY_2 = 20
-RELAY_3 = 21
-RELAY_4 = 16
+PUMP_RELAY_1= 26
+FAN_RELAY_2 = 20
+#FAN_RELAY_3 = 21
+LED_RELAY = 16
 
-#Initialize RPi GPIO
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(RELAY_1,GPIO.OUT)
-GPIO.setup(RELAY_2,GPIO.OUT)
-GPIO.setup(RELAY_3,GPIO.OUT)
-GPIO.setup(RELAY_4,GPIO.OUT)
+GPIO.setup(LED_RELAY,GPIO.OUT)
+GPIO.setup(PUMP_RELAY_1,GPIO.OUT)
+GPIO.setup(FAN_RELAY_2,GPIO.OUT)
+#GPIO.setup(FAN_RELAY_3,GPIO.OUT)
 
-ledState = GPIO.input(RELAY_4)
-fanState = GPIO.input(RELAY_1)
-pumpState = GPIO.input(RELAY_2)
-lastWateredTime = 0;
+ledState = GPIO.input(LED_RELAY)
+pumpState = GPIO.input(PUMP_RELAY_1)
+fanState = GPIO.input(FAN_RELAY_2)
+lastWateredTime = "0";
 fanSpeed = 50;
+
+print("[start] led: " + str(ledState) +
+      "\n[start] pump: " + str(pumpState) +
+      "\n[start] fan: " + str(fanState) +
+      "\n[start] speed: " + str(fanSpeed))
 
 ser = serial.Serial('/dev/ttyUSB0', 9600, timeout = 5)
 
@@ -49,31 +57,59 @@ SITE_POLL_SECONDS = 5
 def getSensorJson():
     ser.write(b'1')
     sensorJson = ser.readline().decode('utf-8')
-    print("[SERIAL] " + sensorJson)
+    print("[SERIAL] " + sensorJson.strip())
     return sensorJson
 
+def translate(value, leftMin, leftMax, rightMin, rightMax):
+    leftSpan = leftMax - leftMin
+    rightSpan = rightMax - rightMin
+    valueScaled = float(value - leftMin) / float(leftSpan)
+    return rightMin + (valueScaled * rightSpan)
 
 def worker():
     global ledState, pumpState, fanState, fanspeed, lastWateredTime
-    
+    now = datetime.datetime.now().time().replace(microsecond=0) 
     jsonDict = json.loads(getSensorJson())
-
-    #handle LED
-    if startTime < datetime.time() < endTime and not ledState:
-        ledState = True
-        GPIO.output(RELAY_4, GPIO.HIGH)
-    if startTime > datetime.time() > endTime and ledState:
-        ledState = False
-        GPIO.output(RELAY_4, GPIO.LOW)
+    jsonDict["moisture"] = translate(jsonDict["moisture"], SENSOR_DRY, SENSOR_WET, 0, 100)
     
-    #handle pump
-    if LOWER_MOIST < jsonDict["moisture"] < UPPER_MOIST and pumpState:
-        pumpState = False
-        GPIO.output(RELAY_2, GPIO.LOW)
-        lastWateredTime = datetime.time()
-    if LOWER_MOIST > jsonDict["moisture"] > UPPER_MOIST and not pumpState:
+    #ledState = True
+    #GPIO.output(LED_RELAY, GPIO.HIGH)
+    
+    #handle LED (active high, normally off)
+    if startTime <= now <= endTime and not ledState:
+        ledState = True
+        print("[state] LED togggled on")
+        GPIO.output(LED_RELAY, GPIO.HIGH)
+    if startTime > now > endTime and ledState:
+        ledState = False
+        print("[state] LED toggled off")
+        GPIO.output(LED_RELAY, GPIO.LOW)
+    
+    #handle pump (active low, normally off)
+    if  jsonDict["moisture"] <= targetMoisture and not pumpState:
         pumpState = True
-        GPIO.output(RELAY_2, GPIO.High)
+        print("[state] Moistening")
+        GPIO.output(PUMP_RELAY_1, GPIO.LOW)
+        lastWateredTime = now
+    if  jsonDict["moisture"] > targetMoisture and pumpState:
+        pumpState = False
+        print("[state] Done Moistening")
+        lastWateredTime = now
+        GPIO.output(PUMP_RELAY_1, GPIO.HIGH)
+
+    #handle fan (active low, normally on)
+    pauseCondition = False;
+    if  pauseCondition and fanState:
+        fanState = False
+        print("[state] Fan stopped")
+        GPIO.output(FAN_RELAY_2, GPIO.LOW)
+    if  not pauseCondition and not fanState:
+        fanState = True
+        GPIO.output(FAN_RELAY_2, GPIO.HIGH)
+       
+    #handle fan speed
+
+    print(str(startTime) + " " + str(now) + " " +str(endTime))
     
     jsonDict["ledState"] = ledState
     jsonDict["startTime"] = str(startTime)
@@ -82,8 +118,10 @@ def worker():
     jsonDict["lastWateredTime"] = str(lastWateredTime)
     jsonDict["fanState"] = fanState
     jsonDict["fanSpeed"] = fanSpeed
-    jsonDict["sysTime"] = str(datetime.datetime.now().time())
-
+    jsonDict["timestamp"] = str(now)
+    jsonDict["targetTemperature"] = targetTemperature
+    jsonDict["targetHumidity"] = targetHumidity
+    jsonDict["targetMoisture"] = targetMoisture
 
     with open("data.json", 'w') as f:
         json.dump(jsonDict, f)
@@ -96,12 +134,16 @@ class setInterval:
         thread = threading.Thread(target = self.__setInterval)
         thread.start()
 
+    def cleanup(self):
+        GPIO.cleanup()
+
     def __setInterval(self):
         nextTime = time.time() + self.interval
         while not self.stopEvent.wait(nextTime - time.time()):
             nextTime += self.interval
             self.action()
-    
+        self.cleanup()
+
     def cancel(self):
         self.stopEvent.set()
 
@@ -128,10 +170,12 @@ class WSHandler(tornado.websocket.WebSocketHandler):
         print("[WS] Incoming message:", message)
         if message == "fan_off" and fanState:
             fanState = False
-            GPIO.output(RELAY_1, GPIO.HIGH)
+            print("[state] Fan off")
+            GPIO.output(FAN_RELAY_2, GPIO.HIGH)
         if message == "fan_on" and not fanState:
             fanState = True
-            GPIO.output(RELAY_1, GPIO.LOW)
+            print("[state] Fan on")
+            GPIO.output(FAN_RELAY_2, GPIO.LOW)
 
     def on_close(self):
         self.callback.stop()

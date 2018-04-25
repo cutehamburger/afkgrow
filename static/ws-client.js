@@ -16,6 +16,7 @@ $(document).ready(function(){
         var parsedData = JSON.parse(e.data);
 	$("#ws-timestamp").text(parsedData.timestamp);
 	$("#ws-temperature").text(parsedData.temperature);
+	$("#ws-temperatureF").text(parsedData.temperature * 9 / 5 + 32);
         $("#ws-humidity").text(parsedData.humidity);
         $("#ws-soilMoisture").text(parsedData.moisture);
         $("#ws-ledState").text(parsedData.ledState);

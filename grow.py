@@ -17,7 +17,7 @@ import RPi.GPIO as GPIO
 #21:00-9:00 (flower)
 
 
-startTime = datetime.time(hour=21, minute=0, second=0)
+startTime = datetime.time(hour=20, minute=0, second=0)
 endTime = datetime.time(hour=13, minute=0, second=0)
 targetTemperature = (24, 27)
 targetHumidity = (48, 52)
@@ -48,8 +48,6 @@ fanSpeed = 25
 #pin, hz
 fanSpeedSignal = GPIO.PWM(19, 200)
 fanSpeedSignal.start(fanSpeed)
-fanSpeedSignal.ChangeDutyCycle(fanSpeed)
-
 
 ledState = GPIO.input(LED_RELAY)
 pumpState = GPIO.input(PUMP_RELAY_1)
@@ -84,17 +82,19 @@ def translate(value, leftMin, leftMax, rightMin, rightMax):
     return rightMin + (valueScaled * rightSpan)
 
 def ledOn():
-     ledState = True
-     print("[state] LED on")
-     GPIO.output(LED_RELAY, GPIO.HIGH)
+    global ledState
+    ledstate = True
+    print("[state] LED on")
+    GPIO.output(LED_RELAY, GPIO.HIGH)
 
 def ledOff():
-     ledState = False
-     print("[state] LED off")
-     GPIO.output(LED_RELAY, GPIO.LOW)
+    global ledState
+    ledState = False
+    print("[state] LED off")
+    GPIO.output(LED_RELAY, GPIO.LOW)
 
 def work():
-    global ledState, pumpState, fanState, fanSpeed, lastWateredTime
+    global ledState, pumpState, lastWateredTime, fanState, fanSpeed, fanSpeedSignal 
     
     now = datetime.datetime.now().time().replace(microsecond=0) 
     jsonDict = json.loads(getSensorJson())
@@ -135,14 +135,20 @@ def work():
         fanSpeedSignal.start(fanSpeed)
         print("[state] Fan started")
         GPIO.output(FAN_RELAY_2, GPIO.HIGH)
-       
+    
     #handle fan speed (function of temperature)
-    if jsonDict["temperature"] < min(targetTemperature) and fanState:
-        fanSpeed = 30
-    elif jsonDict["temperature"] > max(targetTemperature) and fanState:
-        fanspeed = 90
+    if jsonDict["temperature"] < targetTemperature[0] and fanState:
+        fanSpeed = 50
+        print("[state] fan below range")
+        fanSpeedSignal.ChangeDutyCycle(fanSpeed)
+    elif jsonDict["temperature"] > targetTemperature[1] and fanState:
+        fanSpeed = 100
+        print("[state] fan above range")
+        fanSpeedSignal.ChangeDutyCycle(fanSpeed)
     elif fanState:
-        fanSpeed = 45
+        fanSpeed = 75
+        fanSpeedSignal.ChangeDutyCycle(fanSpeed)
+        print("[state] fan in range")
      
     #print(str(startTime) + " " + str(now) + " " +str(endTime))
     

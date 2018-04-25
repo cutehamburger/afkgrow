@@ -9,7 +9,7 @@
 DHT myDHT(DHT_PIN, DHT_TYPE);
 
 void setup(){
-   Serial.begin(9600); 
+   Serial.begin(4800); 
    myDHT.begin();
 }
 

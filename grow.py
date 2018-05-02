@@ -13,52 +13,52 @@ import time
 import datetime
 import RPi.GPIO as GPIO
 
-#21:00-13:00 (veg)
-#21:00-9:00 (flower)
-
-
-startTime = datetime.time(hour=20, minute=0, second=0)
-endTime = datetime.time(hour=13, minute=0, second=0)
-targetTemperature = (24, 27)
-targetHumidity = (48, 52)
-targetMoisture = 60
+#CONSTANTS
 SENSOR_DRY = 550
 SENSOR_WET = 280
 WORK_INTERVAL = 0.5
 SITE_POLL_SECONDS = 5
-
-#pins
 PUMP_RELAY_1= 26
 FAN_RELAY_2 = 20
 #FAN_RELAY_3 = 21
 LED_RELAY = 16
+FAN_PWM_PIN = 19
+PWM_FREQ = 200
 
+#LED TIMER
+startTime = datetime.time(hour=20, minute=0, second=0)
+endTime = datetime.time(hour=13, minute=0, second=0)
+
+#DHT
+targetTemperature = (24, 27)
+targetHumidity = (48, 52)
+
+#WATERING
+startWaterThreshold = 50
+endWaterThreshold = 90
+lastWateredTime = None
+
+#GPIO SETUP
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(LED_RELAY, GPIO.OUT)
 GPIO.setup(PUMP_RELAY_1, GPIO.OUT)
 GPIO.setup(FAN_RELAY_2, GPIO.OUT)
-#GPIO.setup(FAN_RELAY_3, GPIO.OUT
+#GPIO.setup(FAN_RELAY_3, GPIO.OUT)
+GPIO.setup(FAN_PWM_PIN, GPIO.OUT)
 
-#GPIO.setup(13, TACH, GPIO.IN, pull_up_down = GPIO.PUD_UP)
-GPIO.setup(19, GPIO.OUT)
-
-
-fanSpeed = 25
-
-#pin, hz
-fanSpeedSignal = GPIO.PWM(19, 200)
-fanSpeedSignal.start(fanSpeed)
-
+#COMPONENT STATES
 ledState = GPIO.input(LED_RELAY)
 pumpState = GPIO.input(PUMP_RELAY_1)
 fanState = GPIO.input(FAN_RELAY_2)
-lastWateredTime = None
+
+fanSpeed = 30
+fanSpeedSignal = GPIO.PWM(FAN_PWM_PIN, PWM_FREQ)
+fanSpeedSignal.start(fanSpeed)
 
 print("[start] ledState: " + str(ledState) +
       "\n[start] pumpState: " + str(pumpState) +
       "\n[start] fanState: " + str(fanState) +
       "\n[start] fanSpeed: " + str(fanSpeed))
-
 
 #Catch Ctrl+C
 def signal_handler(signal, frame):
@@ -83,7 +83,7 @@ def translate(value, leftMin, leftMax, rightMin, rightMax):
 
 def ledOn():
     global ledState
-    ledstate = True
+    ledState = True
     print("[state] LED on")
     GPIO.output(LED_RELAY, GPIO.HIGH)
 
@@ -93,8 +93,22 @@ def ledOff():
     print("[state] LED off")
     GPIO.output(LED_RELAY, GPIO.LOW)
 
+def saturate(howMoist, timeStamp):
+    global startWaterThreshold, endWaterThreshold, pumpState, lastWateredTime
+    if  howMoist <= startWaterThreshold and not pumpState:
+        pumpState = True
+        print("[state] Pump Start. Moist:" + str(howMoist) + "  Thresh:" + str(startWaterThreshold) + " Last:" + str(lastWateredTime))
+        GPIO.output(PUMP_RELAY_1, GPIO.LOW)
+    elif howMoist >= endWaterThreshold and pumpState:
+        pumpState = False
+        lastWateredTime = timeStamp
+        print("[state] Pump Stop. Moist:" + str(howMoist) + "  Thresh:" + str(endWaterThreshold) + " Last:" + str(lastWateredTime))
+        GPIO.output(PUMP_RELAY_1, GPIO.HIGH)
+    else:
+        return
+
 def work():
-    global ledState, pumpState, lastWateredTime, fanState, fanSpeed, fanSpeedSignal 
+    global ledState, pumpState, fanState, fanSpeed, fanSpeedSignal 
     
     now = datetime.datetime.now().time().replace(microsecond=0) 
     jsonDict = json.loads(getSensorJson())
@@ -113,45 +127,33 @@ def work():
             ledOff()
 
     #handle pump (active low, normally off)
-    if  jsonDict["moisture"] <= targetMoisture and not pumpState:
-        pumpState = True
-        print("[state] Moistening")
-        GPIO.output(PUMP_RELAY_1, GPIO.LOW)
-    elif  jsonDict["moisture"] > targetMoisture and pumpState:
-        pumpState = False
-        print("[state] Done Moistening")
-        lastWateredTime = now
-        GPIO.output(PUMP_RELAY_1, GPIO.HIGH)
+    saturate(jsonDict["moisture"], now)
 
     #handle fan (active low, normally on)
     pauseCondition = False;
     if  pauseCondition and fanState:
         fanState = False
         fanSpeedSignal.Stop()
-        print("[state] Fan stopped")
+        print("[state] Fans stopped")
         GPIO.output(FAN_RELAY_2, GPIO.LOW)
     if  not pauseCondition and not fanState:
         fanState = True
         fanSpeedSignal.start(fanSpeed)
-        print("[state] Fan started")
+        print("[state] Fans started")
         GPIO.output(FAN_RELAY_2, GPIO.HIGH)
     
     #handle fan speed (function of temperature)
     if jsonDict["temperature"] < targetTemperature[0] and fanState:
-        fanSpeed = 50
-        print("[state] fan below range")
+        fanSpeed = 60
         fanSpeedSignal.ChangeDutyCycle(fanSpeed)
     elif jsonDict["temperature"] > targetTemperature[1] and fanState:
         fanSpeed = 100
-        print("[state] fan above range")
         fanSpeedSignal.ChangeDutyCycle(fanSpeed)
     elif fanState:
-        fanSpeed = 75
+        fanSpeed = 85
         fanSpeedSignal.ChangeDutyCycle(fanSpeed)
-        print("[state] fan in range")
      
-    #print(str(startTime) + " " + str(now) + " " +str(endTime))
-    
+    #write data for 
     jsonDict["ledState"] = ledState
     jsonDict["startTime"] = str(startTime)
     jsonDict["endTime"] = str(endTime)
@@ -162,7 +164,7 @@ def work():
     jsonDict["timestamp"] = str(now)
     jsonDict["targetTemperature"] = targetTemperature
     jsonDict["targetHumidity"] = targetHumidity
-    jsonDict["targetMoisture"] = targetMoisture
+    jsonDict["targetMoisture"] = endWaterThreshold
 
     with open("data.json", 'w') as f:
         json.dump(jsonDict, f)
@@ -183,8 +185,6 @@ class setInterval:
 
     def cancel(self):
         self.stopEvent.set()
-
-
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):

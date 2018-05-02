@@ -4,7 +4,7 @@
 
 #define DHT_PIN 2
 #define DHT_TYPE DHT22 
-#define MOISTURE_PIN 0
+#define MOISTURE_PIN 7
 
 DHT myDHT(DHT_PIN, DHT_TYPE);
 

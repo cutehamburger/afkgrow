@@ -30,7 +30,7 @@ startTime = datetime.time(hour=20, minute=0, second=0)
 endTime = datetime.time(hour=13, minute=0, second=0)
 
 #DHT
-targetTemperature = (24, 27)
+targetTemperature = (23, 26)
 targetHumidity = (48, 52)
 
 #WATERING
@@ -47,8 +47,8 @@ GPIO.setup(FAN_RELAY_2, GPIO.OUT)
 GPIO.setup(FAN_PWM_PIN, GPIO.OUT)
 
 #COMPONENT STATES
-ledState = GPIO.input(LED_RELAY)
-pumpState = GPIO.input(PUMP_RELAY_1)
+ledState = False
+pumpState = False
 fanState = GPIO.input(FAN_RELAY_2)
 
 fanSpeed = 30
@@ -108,19 +108,19 @@ def saturate(howMoist, timeStamp):
         return
 
 def work():
-    global ledState, pumpState, fanState, fanSpeed, fanSpeedSignal 
-    
-    now = datetime.datetime.now().time().replace(microsecond=0) 
+    global ledState, pumpState, fanState, fanSpeed, fanSpeedSignal
+
+    now = datetime.datetime.now().time().replace(microsecond=0)
     jsonDict = json.loads(getSensorJson())
     jsonDict["moisture"] = translate(jsonDict["moisture"], SENSOR_DRY, SENSOR_WET, 0, 100)
-    
+
     #handle LED (active high, normally off)
     if startTime < endTime:
         if startTime <= now <= endTime and not ledState:
             ledOn()
         elif (now >= endTime or now <= startTime) and ledState:
             ledOff()
-    else: 
+    else:
         if (now >= startTime or now <= endTime) and not ledState:
             ledOn()
         elif startTime >= now >= endTime and ledState:
@@ -141,19 +141,18 @@ def work():
         fanSpeedSignal.start(fanSpeed)
         print("[state] Fans started")
         GPIO.output(FAN_RELAY_2, GPIO.HIGH)
-    
+
     #handle fan speed (function of temperature)
     if jsonDict["temperature"] < targetTemperature[0] and fanState:
-        fanSpeed = 60
+        fanSpeed = 35
         fanSpeedSignal.ChangeDutyCycle(fanSpeed)
     elif jsonDict["temperature"] > targetTemperature[1] and fanState:
         fanSpeed = 100
         fanSpeedSignal.ChangeDutyCycle(fanSpeed)
     elif fanState:
-        fanSpeed = 85
+        fanSpeed = 60
         fanSpeedSignal.ChangeDutyCycle(fanSpeed)
-     
-    #write data for 
+
     jsonDict["ledState"] = ledState
     jsonDict["startTime"] = str(startTime)
     jsonDict["endTime"] = str(endTime)
@@ -220,7 +219,10 @@ app = tornado.web.Application(
         (r'/ws', WSHandler),
     ],
     template_path = os.path.join(os.path.dirname(__file__), "templates"),
-    static_path = os.path.join(os.path.dirname(__file__), "static")
+    static_path = os.path.join(os.path.dirname(__file__), "static"),
+    ssl_options = {"certfile": "./ssl/cert.csr",
+                   "keyfile": "./ssl/cert.key"
+                  }
 )
 ser = serial.Serial('/dev/ttyUSB0', 4800, timeout = 5)
 workerThread = None

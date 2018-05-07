@@ -1,6 +1,6 @@
 SUDO=/usr/bin/sudo
 PYTHON=python3
-PY_MAIN=grow.py
+PY_MAIN=afkgrow.py
 
 start:
 	$(SUDO) $(PYTHON) $(PY_MAIN)

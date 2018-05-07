@@ -1,5 +1,6 @@
 import tornado.web
 import tornado.websocket
+import tornado.httpserver
 import tornado.ioloop
 from tornado.ioloop import PeriodicCallback
 import os.path
@@ -26,7 +27,7 @@ FAN_PWM_PIN = 19
 PWM_FREQ = 200
 
 #LED TIMER
-startTime = datetime.time(hour=20, minute=0, second=0)
+startTime = datetime.time(hour=21, minute=0, second=0)
 endTime = datetime.time(hour=13, minute=0, second=0)
 
 #DHT
@@ -220,16 +221,23 @@ app = tornado.web.Application(
     ],
     template_path = os.path.join(os.path.dirname(__file__), "templates"),
     static_path = os.path.join(os.path.dirname(__file__), "static"),
-    ssl_options = {"certfile": "./ssl/cert.csr",
-                   "keyfile": "./ssl/cert.key"
-                  }
 )
+
+
+server = tornado.httpserver.HTTPServer(app,
+    ssl_options = {
+        "certfile": os.path.join(os.path.dirname(__file__),"ssl/cert.pem"),
+        "keyfile": os.path.join(os.path.dirname(__file__), "ssl/key.pem")
+    }
+)
+
 ser = serial.Serial('/dev/ttyUSB0', 4800, timeout = 5)
+
 workerThread = None
 
 if __name__ == "__main__":
     try:
-        app.listen(80)
+        server.listen(443)
         workerThread = setInterval(WORK_INTERVAL, work)
         print("Tornado server starting.")
         tornado.ioloop.IOLoop.instance().start()

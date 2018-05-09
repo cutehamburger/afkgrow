@@ -28,7 +28,8 @@ $(document).ready(function(){
 
     	$("#ws-targetTemperature").text(parsedData.targetTemperature);
     	$("#ws-targetHumidity").text(parsedData.targetHumidity);
-        $("#ws-targetSoilMoisture").text(parsedData.targetMoisture);
+        $("#ws-startWaterThreshold").text(parsedData.startWaterThreshold);
+        $("#ws-endWaterThreshold").text(parsedData.endWaterThreshold);
         $("#ws-ledStart").text(parsedData.startTime);
         $("#ws-ledStop").text(parsedData.endTime);
 

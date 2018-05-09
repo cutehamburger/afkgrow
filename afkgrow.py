@@ -13,6 +13,7 @@ import json
 import time
 import datetime
 import RPi.GPIO as GPIO
+import math
 
 #CONSTANTS
 SENSOR_DRY = 550
@@ -25,6 +26,7 @@ FAN_RELAY_2 = 20
 LED_RELAY = 16
 FAN_PWM_PIN = 19
 PWM_FREQ = 200
+BAUD_RATE = 4800
 
 #LED TIMER
 startTime = datetime.time(hour=21, minute=0, second=0)
@@ -52,7 +54,7 @@ ledState = False
 pumpState = False
 fanState = GPIO.input(FAN_RELAY_2)
 
-fanSpeed = 30
+fanSpeed = 20
 fanSpeedSignal = GPIO.PWM(FAN_PWM_PIN, PWM_FREQ)
 fanSpeedSignal.start(fanSpeed)
 
@@ -71,7 +73,7 @@ def signal_handler(signal, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 def getSensorJson():
-    ser.write(b'123')
+    ser.write(b'deadbeef')
     sensorJson = ser.readline().decode('utf-8')
     #print("[SERIAL] " + sensorJson)
     return sensorJson
@@ -114,7 +116,7 @@ def work():
     now = datetime.datetime.now().time().replace(microsecond=0)
     jsonDict = json.loads(getSensorJson())
     jsonDict["moisture"] = translate(jsonDict["moisture"], SENSOR_DRY, SENSOR_WET, 0, 100)
-
+    jsonDict["moisture"] = math.ceil(jsonDict["moisture"] * 100) / 100
     #handle LED (active high, normally off)
     if startTime < endTime:
         if startTime <= now <= endTime and not ledState:
@@ -164,7 +166,8 @@ def work():
     jsonDict["timestamp"] = str(now)
     jsonDict["targetTemperature"] = targetTemperature
     jsonDict["targetHumidity"] = targetHumidity
-    jsonDict["targetMoisture"] = endWaterThreshold
+    jsonDict["startWaterThreshold"] = startWaterThreshold
+    jsonDict["endWaterThreshold"] = endWaterThreshold
 
     with open("data.json", 'w') as f:
         json.dump(jsonDict, f)
@@ -189,11 +192,10 @@ class setInterval:
 class MainHandler(tornado.web.RequestHandler):
     def prepare(self):
         if self.request.protocol == "http":
-            print("[HTTP] User connected.")
             self.redirect("https://" + self.request.host, permanent = False)
 
     def get(self):
-        print("[HTTPS] User connected.")
+        print("[HTTP] User connected: " + self.request.remote_ip)
         self.render("index.html")
 
 class WSHandler(tornado.websocket.WebSocketHandler):
@@ -220,7 +222,7 @@ class WSHandler(tornado.websocket.WebSocketHandler):
             self.write_message(siteJson)
 
 
-ser = serial.Serial('/dev/ttyUSB0', 4800, timeout = 5)
+ser = serial.Serial('/dev/ttyUSB0', BAUD_RATE, timeout = 5)
 
 workerThread = None
 

@@ -19,7 +19,9 @@ Target %: <span id="ws-targetHumidity">Waiting... </span>
 </br>
 Soil Moisture: <span id="ws-soilMoisture">Waiting... </span>
 </br>
-Target Soil Moisture: <span id="ws-targetSoilMoisture">Waiting... </span>
+Start Water: <span id="ws-startWaterThreshold">Waiting... </span>
+</br>
+End Water: <span id="ws-endWaterThreshold">Waiting... </span>
 </br>
 LED Status: <span id="ws-ledState">Waiting... </span>
 </br>
@@ -38,14 +40,16 @@ Fan Speed: <span id="ws-fanSpeed">Waiting... </span>
 </br>
 <hr>
 </br>
-img
+<span id="ws-image">Waiting... </span>
+</br>
 </br>
 <hr>
 <span id="ws-json">Waiting... </span>
 </br>
+
 <!-- Scripts -->
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
-<script src="{{ static_url("ws-client.js") }}"></script>
+<script src="{{ static_url("client.js") }}"></script>
 
 </body>
 </html>

@@ -187,8 +187,13 @@ class setInterval:
         self.stopEvent.set()
 
 class MainHandler(tornado.web.RequestHandler):
+    def prepare(self):
+        if self.request.protocol == "http":
+            print("[HTTP] User connected.")
+            self.redirect("https://" + self.request.host, permanent = False)
+
     def get(self):
-        print("[HTTP] User connected.")
+        print("[HTTPS] User connected.")
         self.render("index.html")
 
 class WSHandler(tornado.websocket.WebSocketHandler):
@@ -214,22 +219,6 @@ class WSHandler(tornado.websocket.WebSocketHandler):
             #print("[WS] " + json.dumps(siteJson))
             self.write_message(siteJson)
 
-app = tornado.web.Application(
-    [
-        (r'/', MainHandler),
-        (r'/ws', WSHandler),
-    ],
-    template_path = os.path.join(os.path.dirname(__file__), "templates"),
-    static_path = os.path.join(os.path.dirname(__file__), "static"),
-)
-
-
-server = tornado.httpserver.HTTPServer(app,
-    ssl_options = {
-        "certfile": os.path.join(os.path.dirname(__file__),"ssl/cert.pem"),
-        "keyfile": os.path.join(os.path.dirname(__file__), "ssl/key.pem")
-    }
-)
 
 ser = serial.Serial('/dev/ttyUSB0', 4800, timeout = 5)
 
@@ -237,10 +226,25 @@ workerThread = None
 
 if __name__ == "__main__":
     try:
+        app = tornado.web.Application(
+            [
+            (r'/', MainHandler),
+            (r'/ws', WSHandler),
+            ],
+            template_path = os.path.join(os.path.dirname(__file__), "templates"),
+            static_path = os.path.join(os.path.dirname(__file__), "static"),
+        )
+        app.listen(80)
+        server = tornado.httpserver.HTTPServer(app,
+            ssl_options = {
+                "certfile": os.path.join(os.path.dirname(__file__),"ssl/cert.pem"),
+                "keyfile": os.path.join(os.path.dirname(__file__), "ssl/key.pem")
+            }
+        )
         server.listen(443)
         workerThread = setInterval(WORK_INTERVAL, work)
         print("Tornado server starting.")
-        tornado.ioloop.IOLoop.instance().start()
-    except:
-        print("Tornado server stopped.")
+        tornado.ioloop.IOLoop.current().start()
+    except e:
+        print("Tornado server stopped." + e)
         #GPIO.cleanup()

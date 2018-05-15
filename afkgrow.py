@@ -15,6 +15,9 @@ import datetime
 import RPi.GPIO as GPIO
 import math
 
+#same directory
+import camera as cam
+
 #CONSTANTS
 SENSOR_DRY = 550
 SENSOR_WET = 280
@@ -29,8 +32,8 @@ PWM_FREQ = 200
 BAUD_RATE = 4800
 
 #LED TIMER
-startTime = datetime.time(hour=21, minute=0, second=0)
-endTime = datetime.time(hour=13, minute=0, second=0)
+startTime = datetime.time(hour=20, minute=00, second=0)
+endTime = datetime.time(hour=13, minute=30, second=0)
 
 #DHT
 targetTemperature = (23, 26)
@@ -54,9 +57,11 @@ ledState = False
 pumpState = False
 fanState = GPIO.input(FAN_RELAY_2)
 
-fanSpeed = 20
+fanSpeed = 30
 fanSpeedSignal = GPIO.PWM(FAN_PWM_PIN, PWM_FREQ)
 fanSpeedSignal.start(fanSpeed)
+
+camera = cam.Camera(0, 640, 360, 100, 7)
 
 print("[start] ledState: " + str(ledState) +
       "\n[start] pumpState: " + str(pumpState) +
@@ -117,6 +122,7 @@ def work():
     jsonDict = json.loads(getSensorJson())
     jsonDict["moisture"] = translate(jsonDict["moisture"], SENSOR_DRY, SENSOR_WET, 0, 100)
     jsonDict["moisture"] = math.ceil(jsonDict["moisture"] * 100) / 100
+
     #handle LED (active high, normally off)
     if startTime < endTime:
         if startTime <= now <= endTime and not ledState:
@@ -200,20 +206,16 @@ class MainHandler(tornado.web.RequestHandler):
 
 class WSHandler(tornado.websocket.WebSocketHandler):
     def open(self):
-        print("[WS] Connection was opened.")
+        print("[WS] Connection was opened from: " + self.request.remote_ip)
         self.callback = PeriodicCallback(self.sendData, SITE_POLL_SECONDS * 1000)
         self.callback.start();
 
     def on_message(self, message):
         print("[WS] Incoming message:", message)
-        if message == "fan_off" and fanState:
-            fanState = False
-        if message == "fan_on" and not fanState:
-            fanState = True
 
     def on_close(self):
         self.callback.stop()
-        print ("[WS] Closed connection.")
+        print("[WS] Connection was closed from: " + self.request.remote_ip)
 
     def sendData(self):
         with open("data.json", 'r') as f:
@@ -221,17 +223,40 @@ class WSHandler(tornado.websocket.WebSocketHandler):
             #print("[WS] " + json.dumps(siteJson))
             self.write_message(siteJson)
 
+class WSImageHandler(tornado.websocket.WebSocketHandler):
+    clients = set()
 
-ser = serial.Serial('/dev/ttyUSB0', BAUD_RATE, timeout = 5)
+    def check_origin(self, origin):
+        #allow all cross-origin traffic
+        return  True
 
+    def open(self):
+        self.clients.add(self)
+        print("[WS-img] Connection was opened from: " + self.request.remote_ip)
+        camera.request_start()
+
+    def on_message(self, message):
+        jpeg_bytes = camera.get_jpeg_image_bytes()
+        self.write_message(jpeg_bytes, binary=True)
+
+    def on_close(self):
+        self.clients.remove(self)
+        print("[WS-img] Connection was closed from: " + self.request.remote_ip)
+        if len(self.clients) == 0:
+            camera.request_stop()
+
+
+ser = serial.Serial('/dev/ch341', BAUD_RATE, timeout = 5)
 workerThread = None
 
 if __name__ == "__main__":
     try:
         app = tornado.web.Application(
             [
-            (r'/', MainHandler),
-            (r'/ws', WSHandler),
+                (r'/', MainHandler),
+                (r'/ws', WSHandler),
+                (r'/wsimg', WSImageHandler),
+
             ],
             template_path = os.path.join(os.path.dirname(__file__), "templates"),
             static_path = os.path.join(os.path.dirname(__file__), "static"),
@@ -247,6 +272,6 @@ if __name__ == "__main__":
         workerThread = setInterval(WORK_INTERVAL, work)
         print("Tornado server starting.")
         tornado.ioloop.IOLoop.current().start()
-    except e:
-        print("Tornado server stopped." + e)
+    except:
+        print("Tornado server stopped.")
         #GPIO.cleanup()

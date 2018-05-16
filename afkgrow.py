@@ -63,17 +63,13 @@ fanSpeedSignal.start(fanSpeed)
 
 camera = cam.Camera(0, 640, 360, 100, 7)
 
-print("[start] ledState: " + str(ledState) +
-      "\n[start] pumpState: " + str(pumpState) +
-      "\n[start] fanState: " + str(fanState) +
-      "\n[start] fanSpeed: " + str(fanSpeed))
-
 #Catch Ctrl+C
 def signal_handler(signal, frame):
-   print("\n[Ctrl+C caught]")
-   GPIO.cleanup()
-   workerThread.stopEvent.set()
-   sys.exit(0)
+    print("\n[Ctrl+C caught]")
+    GPIO.cleanup()
+    workerThread.stopEvent.set()
+    camera.request_stop()
+    sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
 
@@ -205,17 +201,27 @@ class MainHandler(tornado.web.RequestHandler):
         self.render("index.html")
 
 class WSHandler(tornado.websocket.WebSocketHandler):
+    clients = set()
+
+    #def check_origin(self, origin):
+        #allow all cross-origin traffic
+     #   return  True
+
     def open(self):
+        self.clients.add(self)
         print("[WS] Connection was opened from: " + self.request.remote_ip)
         self.callback = PeriodicCallback(self.sendData, SITE_POLL_SECONDS * 1000)
         self.callback.start();
 
     def on_message(self, message):
-        print("[WS] Incoming message:", message)
+        #print("[WS] Incoming message:", message)
+        pass
 
     def on_close(self):
-        self.callback.stop()
+        self.clients.remove(self)
         print("[WS] Connection was closed from: " + self.request.remote_ip)
+        #if len(self.clients) == 0:
+        self.callback.stop()
 
     def sendData(self):
         with open("data.json", 'r') as f:
@@ -226,9 +232,9 @@ class WSHandler(tornado.websocket.WebSocketHandler):
 class WSImageHandler(tornado.websocket.WebSocketHandler):
     clients = set()
 
-    def check_origin(self, origin):
-        #allow all cross-origin traffic
-        return  True
+    #def check_origin(self, origin):
+    #    #allow all cross-origin traffic
+    #    return  True
 
     def open(self):
         self.clients.add(self)
@@ -244,7 +250,6 @@ class WSImageHandler(tornado.websocket.WebSocketHandler):
         print("[WS-img] Connection was closed from: " + self.request.remote_ip)
         if len(self.clients) == 0:
             camera.request_stop()
-
 
 ser = serial.Serial('/dev/ch341', BAUD_RATE, timeout = 5)
 workerThread = None
@@ -270,8 +275,8 @@ if __name__ == "__main__":
         )
         server.listen(443)
         workerThread = setInterval(WORK_INTERVAL, work)
-        print("Tornado server starting.")
+        print("[state] Tornado server starting.")
         tornado.ioloop.IOLoop.current().start()
     except:
-        print("Tornado server stopped.")
+        print("[state] Tornado server stopped.")
         #GPIO.cleanup()

@@ -10,7 +10,7 @@ $(document).ready(function(){
 	var time = 0;
 	var request_time = 0;
 	var time_smoothing = 0.9;
-	var request_time_smoothing = 0.1;
+	var request_time_smoothing = 0.2;
 	var target_time = 1000 / target_fps;
 
 
@@ -70,7 +70,7 @@ $(document).ready(function(){
     };
 
     ws.onmessage = function(evt){
-        $("#ws-json").text(evt.data);
+        //$("#ws-json").text(evt.data);
         var parsedData = JSON.parse(evt.data);
 
 

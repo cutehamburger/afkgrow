@@ -1,0 +1,3 @@
+*.json
+ssl/*
+__pycache__*
